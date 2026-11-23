@@ -1,5 +1,4 @@
 import math
-from deepspeed.runtime.activation_checkpointing.checkpointing import set_num_layers
 
 import torch
 import torch.nn as nn

@@ -122,7 +122,7 @@ def add_training_args(parser: argparse.ArgumentParser):
     group.add_argument('--lr', type=float, default=1.0e-4,
                        help='initial learning rate')
     group.add_argument('--warmup', type=float, default=0.01,
-                       help='percentage of data to warmup on (.01 = 1% of all '
+                       help='percentage of data to warmup on (.01 = 1%% of all '
                        'training iters). Default 0.01')
     # model checkpointing
     group.add_argument('--save', type=str, default=None,
@@ -135,7 +135,8 @@ def add_training_args(parser: argparse.ArgumentParser):
                        help='Do not save current rng state.')
     group.add_argument('--load', type=str, default=None,
                        help='Path to a directory containing a model checkpoint.')
-    group.add_argument('--load-oprimizer-states', action="store_true")
+    group.add_argument('--load-optimizer-states', '--load-oprimizer-states',
+                       dest='load_oprimizer_states', action="store_true")
     group.add_argument('--load-lr-scheduler-states', action="store_true")
     group.add_argument('--no-load-optim', action='store_true',
                        help='Do not load optimizer when loading checkpoint.')
@@ -155,7 +156,7 @@ def add_training_args(parser: argparse.ArgumentParser):
                        help='which backend to use for distributed '
                        'training. One of [gloo, nccl]')
 
-    group.add_argument('--local_rank', type=int, default=None,
+    group.add_argument('--local_rank', '--local-rank', type=int, default=None,
                        help='local rank passed from distributed launcher')
 
     return parser
@@ -226,6 +227,8 @@ def get_args():
 
     # Include DeepSpeed configuration arguments
     parser = deepspeed.add_config_arguments(parser)
+    parser.add_argument('--deepspeed-modern', action='store_true',
+                        help='Opt in to unmodified DeepSpeed 0.20; model-only checkpoints.')
 
     args = parser.parse_args()
 

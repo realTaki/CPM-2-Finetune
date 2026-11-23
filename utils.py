@@ -27,9 +27,9 @@ from torch.nn.parallel.distributed import DistributedDataParallel as torchDDP
 from fp16 import FP16_Optimizer
 import mpu
 import deepspeed
-from apex.optimizers import FusedAdam as Adam
 from fp16 import FP16_Module
 from fp16 import FP16_Optimizer
+import modern_runtime
 from learning_rates import AnnealingLR
 from model import EncDecModel, EncDecConfig
 from model import enc_dec_get_params_for_weight_decay_optimization, enc_dec_get_params_for_prompt_optimization, enc_dec_get_params_for_optimization_wo_prompt
@@ -115,6 +115,10 @@ def get_model(args, vocab_size, prompt_config=None):
     if args.prompt_tune and prompt_config["init_scratch"]:
         model.init_prompt_embeds()
 
+    # DeepSpeed owns the distributed wrapper and precision for the modern path.
+    if getattr(args, 'deepspeed_modern', False):
+        return model
+
     # Fp16 conversion.
     if args.fp16:
         model = FP16_Module(model)
@@ -150,7 +154,10 @@ def get_optimizer(model, args, prompt_config=None):
             if not hasattr(param, 'model_parallel'):
                 param.model_parallel = False
 
-    if args.cpu_optimizer:
+    if getattr(args, 'deepspeed_modern', False):
+        # NVIDIA Apex FusedAdam uses AdamW semantics by default.
+        optimizer = torch.optim.AdamW(param_groups, lr=args.lr, weight_decay=args.weight_decay)
+    elif args.cpu_optimizer:
         if args.cpu_torch_adam:
             cpu_adam_optimizer = torch.optim.Adam
         else:
@@ -159,8 +166,9 @@ def get_optimizer(model, args, prompt_config=None):
         optimizer = cpu_adam_optimizer(param_groups,
                         lr=args.lr, weight_decay=args.weight_decay)
     else:
-        # Use FusedAdam.
-        optimizer = Adam(param_groups,
+        # Keep the Apex dependency on the legacy optimizer path only.
+        from apex.optimizers import FusedAdam
+        optimizer = FusedAdam(param_groups,
                          lr=args.lr, weight_decay=args.weight_decay)
 
     print(f'Optimizer = {optimizer.__class__.__name__}')
@@ -209,6 +217,26 @@ def get_learning_rate_scheduler(optimizer, args):
 def setup_model_and_optimizer(args, vocab_size, ds_config, prompt_config=None):
     """Setup model and optimizer."""
 
+    if getattr(args, 'deepspeed_modern', False):
+        modern_runtime.validate_runtime(deepspeed, args, ds_config)
+        model = get_model(args, vocab_size, prompt_config)
+        if args.load is not None:
+            path = modern_runtime.load_model_weights(
+                model, args.load, mpu.get_model_parallel_rank(), args.prompt_tune
+            )
+            if mpu.get_data_parallel_rank() == 0:
+                print(f'  loaded model weights from {path}', flush=True)
+        if args.prompt_tune and prompt_config["init_from_vocab"]:
+            model.init_prompt_embeds()
+        # Build ZeRO master weights from already loaded/initialized model tensors.
+        optimizer = get_optimizer(model, args, prompt_config)
+        lr_scheduler = get_learning_rate_scheduler(optimizer, args)
+        model, optimizer, _, lr_scheduler = modern_runtime.initialize_engine(
+            deepspeed, model, optimizer, lr_scheduler, mpu, ds_config
+        )
+        args.iteration = 0
+        return model, optimizer, lr_scheduler
+
     model = get_model(args, vocab_size, prompt_config)
     optimizer = get_optimizer(model, args, prompt_config)
     lr_scheduler = get_learning_rate_scheduler(optimizer, args)
@@ -253,6 +281,8 @@ def initialize_distributed(args):
     device = args.rank % torch.cuda.device_count()
     if args.local_rank is not None:
         device = args.local_rank
+    elif getattr(args, 'deepspeed_modern', False):
+        device = int(os.environ.get('LOCAL_RANK', device))
     torch.cuda.set_device(device)
     # Call the init process
     init_method = 'tcp://'
@@ -395,6 +425,22 @@ def save_zero_checkpoint(args, iteration, optimizer):
 def save_checkpoint(iteration, model, optimizer,
                     lr_scheduler, args, save_dir=None):
     """Save a model checkpoint."""
+    if getattr(args, 'deepspeed_modern', False):
+        output_dir = args.save if save_dir is None else save_dir
+        if mpu.get_data_parallel_rank() == 0:
+            modern_runtime.save_model_weights(
+                model.module, output_dir, iteration, mpu.get_model_parallel_rank()
+            )
+        torch.distributed.barrier()
+        if torch.distributed.get_rank() == 0:
+            tracker = get_checkpoint_tracker_filename(output_dir)
+            temporary = tracker + '.tmp'
+            with open(temporary, 'w') as file:
+                file.write(str(iteration))
+            os.replace(temporary, tracker)
+        torch.distributed.barrier()
+        return
+
     if args.deepspeed:
         save_ds_checkpoint(iteration, model, args, save_dir)
     else:
