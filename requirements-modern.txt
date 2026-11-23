@@ -1,0 +1,8 @@
+# Install the matching torch wheel for your machine before installing this file.
+torch==2.13.0
+deepspeed==0.20.0
+numpy>=1.26.4
+nltk>=3.9.3
+jieba==0.42.1
+tqdm>=4.66.3
+six>=1.17.0

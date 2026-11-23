@@ -225,7 +225,9 @@ def train(args, data_config, tokenizer, model, optimizer, lr_scheduler,
                 log_string += ' learning rate {:.3} |'.format(learning_rate)
                 log_string += ' lm loss {:.6} |'.format(avg_lm_loss)
                 if args.fp16:
-                    log_string += ' loss scale {:.1f} |'.format(optimizer.cur_scale if args.deepspeed else optimizer.loss_scale)
+                    loss_scale = getattr(optimizer, 'cur_scale', None) if args.deepspeed else optimizer.loss_scale
+                    if loss_scale is not None:
+                        log_string += ' loss scale {:.1f} |'.format(loss_scale)
                 print_rank_0(log_string)
                 save_rank_0(args, log_string)
                 total_loss = 0.0
