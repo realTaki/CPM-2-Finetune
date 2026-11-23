@@ -6,7 +6,7 @@ To try this preview, use a separate environment with an official
 intended accelerator and the unmodified release of DeepSpeed:
 
 ```sh
-DS_BUILD_OPS=0 python -m pip install -r requirements-modern.txt
+DS_BUILD_OPS=0 python -m pip install -r requirements.txt
 python finetune_cpm2.py --help
 ```
 
@@ -47,11 +47,14 @@ restricted weights-only loading, invalid tags, mismatched keys, rejecting
 full resume, and a fresh process restoring a synthetic shard and taking
 a PyTorch training step.
 
-Full DeepSpeed training has not been demonstrated here. DeepSpeed's optional
-Linux shared-memory collective needs a C++ compiler, unavailable on the
-test machine. Disabling that optional extension in the test harness reached
-the stock Gloo backend, but initializing Gloo was blocked by the local
-sandbox. The production path does not disable or patch that extension.
+On the Oracle ARM64 host, the same PyTorch 2.13.0 / DeepSpeed 0.20.0
+builds also passed a real two-process Gloo ZeRO-1 smoke in both model-parallel
+size 1 (two data ranks) and size 2 (two model ranks). Both runs performed
+forward/backward and an optimizer step, wrote model weights, then launched
+fresh processes to warm-start and take another step. This used only
+synthetic input, FP32, and the stock Gloo fallback for the unavailable
+optional shared-memory extension. It does not establish CUDA/FP16 support,
+full CLI training on CPU, numerical parity, or old-checkpoint compatibility.
 
 Run this real DeepSpeed train/save/warm-start smoke before relying on the
 preview for training. In an appropriate test environment, repeat with

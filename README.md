@@ -52,6 +52,13 @@ Docker 启动之后在 /mnt 下操作即可。
 
 **注意我们目前只修复了 deepspeed stage 1 的问题，其他优化方法可以按照同样方法进行修改**
 
+### 新版运行时（可选）
+
+新的 `requirements.txt` 安装 PyTorch 2.13 和 DeepSpeed 0.20。用
+`--deepspeed-modern` 选择新版路径；它支持仅模型权重的检查点，不支持
+完整训练状态续跑。旧 Docker 仍使用原镜像内的依赖。安装与测试范围见
+[新版运行时说明](MODERN_RUNTIME.md)。
+
 ## 2 全参数微调
 
 `scripts/full_model/` 目录下的 7 个 .sh 文件分别对应技术报告中 7 个数据集的 Fine-tune 脚本。注意：除了 wmt_cn 之外，其他数据集都使用**纯中文模型**，wmt_cn 数据集使用**中英双语模型**。

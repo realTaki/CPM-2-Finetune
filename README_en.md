@@ -42,6 +42,13 @@ Since the enviroment is ready in the docker, you don't need to set any environme
 docker run -ti -v ${PWD}:/mnt gyxthu17/cpm-2:1.0 /bin/bash
 ```
 
+### Modern runtime (opt-in)
+
+The new `requirements.txt` installs PyTorch 2.13 and DeepSpeed 0.20.
+Add `--deepspeed-modern` to select the modern path. This path supports
+model-only checkpoint warm starts; the historical Docker image retains its
+preinstalled dependencies. See [validation and limits](MODERN_RUNTIME.md).
+
 ## 2 Full Model Fine-tuning
 
 The scripts of full model fine-tuning are under `scripts/full_model/`. The 7 .sh files are used for the 7 downstream tasks in our report respectively. NOTE: we use the **Chinese-English Model** for the wmt\_cn dataset and the **Chinese Model** for other datasets.
